@@ -1,0 +1,5 @@
+{
+  "name": "ShuttleBusService",
+  "description": "연속 애니메이션과 시간 지연 로직이 포함된 셔틀버스 실시간 추적 MVP입니다. 모바일 최적화 및 그림자 없는 와이어프레임 디자인을 적용했습니다.",
+  "requestFramePermissions": []
+}
