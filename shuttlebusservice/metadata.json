@@ -1,5 +1,5 @@
 {
-  "name": "ShuttleBusService",
-  "description": "연속 애니메이션과 시간 지연 로직이 포함된 셔틀버스 실시간 추적 MVP입니다. 모바일 최적화 및 그림자 없는 와이어프레임 디자인을 적용했습니다.",
+  "name": "셔틀 로그 MVP v2.2",
+  "description": "다중 셔틀 선택, 주간/월간 달력 토글, 날짜별 메모, 경로 혼잡도 표시 및 실시간 삼각형 색상 변경이 적용된 고도화 MVP입니다.",
   "requestFramePermissions": []
 }

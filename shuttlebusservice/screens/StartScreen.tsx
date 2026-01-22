@@ -10,7 +10,8 @@ const StartScreen: React.FC<StartScreenProps> = ({ onSelect }) => {
   return (
     <div className="flex flex-col items-center justify-center min-h-screen p-10 bg-white max-w-[420px] mx-auto w-full border-x border-gray-100">
       <div className="text-center mb-24">
-        <h1 className="text-[34px] font-bold mb-2 tracking-tight">셔틀 라이브</h1>
+        {/* 앱 명칭 변경: 셔틀 라이브 -> 셔틀 로그 */}
+        <h1 className="text-[34px] font-bold mb-2 tracking-tight">셔틀 로그</h1>
         <p className="text-[15px] font-medium text-gray-400">당신의 신분을 선택해주세요</p>
       </div>
 
@@ -34,7 +35,8 @@ const StartScreen: React.FC<StartScreenProps> = ({ onSelect }) => {
         ))}
       </div>
       
-      <p className="mt-20 text-[12px] text-gray-400 font-medium">© 2025 Shuttle Live Service</p>
+      {/* 앱 명칭 변경: Shuttle Live -> Shuttle Log */}
+      <p className="mt-20 text-[12px] text-gray-400 font-medium">© 2026 Shuttle Log Service</p>
     </div>
   );
 };

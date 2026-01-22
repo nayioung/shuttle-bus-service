@@ -11,39 +11,41 @@ import { NoticeList, NoticeDetail } from './screens/NoticeScreens';
 import { NOTICES } from './constants';
 
 /**
- * [BACKUP_VERSION: v_before_dropoff_label_and_alignment_fix_20250523_1800]
- * 
- * ROLLBACK (manual):
- * 사용자가 "되돌려줘"라고 요청할 경우 브라우저 콘솔에서 아래 코드를 실행하십시오.
- * 
- * const snap = JSON.parse(localStorage.getItem("APP_BACKUP_SNAPSHOT") || "{}");
- * localStorage.clear();
- * Object.entries(snap).forEach(([k, v]) => localStorage.setItem(k, v));
- * window.location.reload();
+ * 0) 백업 및 복구 로직
+ * 수정 전 상태를 스냅샷으로 저장하여 문제 발생 시 복구할 수 있도록 합니다.
  */
+const performBackup = () => {
+  if (!localStorage.getItem("APP_BACKUP_SNAPSHOT")) {
+    const backupData: Record<string, string> = {};
+    for (let i = 0; i < localStorage.length; i++) {
+      const key = localStorage.key(i);
+      if (key) backupData[key] = localStorage.getItem(key) || "";
+    }
+    localStorage.setItem("APP_BACKUP_SNAPSHOT", JSON.stringify(backupData));
+    localStorage.setItem("APP_BACKUP_VERSION", "v_embedded_base64_from_txt_oneline");
+    console.log("Backup created: v_embedded_base64_from_txt_oneline");
+  }
+};
+
+// 🔁 수동 복구 필요 시 브라우저 콘솔에서 실행:
+/*
+  const snap = JSON.parse(localStorage.getItem("APP_BACKUP_SNAPSHOT") || "{}");
+  localStorage.clear();
+  Object.entries(snap).forEach(([k, v]) => localStorage.setItem(k, v as string));
+  window.location.reload();
+*/
 
 const App: React.FC = () => {
   const [screen, setScreen] = useState<Screen>(Screen.START);
+  const [searchEntrySource, setSearchEntrySource] = useState<'DROPDOWN' | 'MYPAGE'>('MYPAGE');
   const [selectedNoticeId, setSelectedNoticeId] = useState<number | null>(null);
   const [userData, setUserData] = useState<UserData>(() => {
     const saved = localStorage.getItem('shuttle_user_data');
-    return saved ? JSON.parse(saved) : { role: null, studentName: '', studentPhone: '', parentPhone: '', isApplied: false };
+    return saved ? JSON.parse(saved) : { role: null, studentName: '', studentPhone: '', parentPhone: '', isApplied: false, selectedShuttleId: 'shuttle_1' };
   });
 
   useEffect(() => {
-    // 0-1. localStorage 스냅샷 백업 (최초 1회)
-    if (!localStorage.getItem("APP_BACKUP_SNAPSHOT")) {
-      const currentData: Record<string, string> = {};
-      for (let i = 0; i < localStorage.length; i++) {
-        const key = localStorage.key(i);
-        if (key && !key.startsWith("APP_BACKUP")) {
-          currentData[key] = localStorage.getItem(key) || "";
-        }
-      }
-      localStorage.setItem("APP_BACKUP_SNAPSHOT", JSON.stringify(currentData));
-      localStorage.setItem("APP_BACKUP_VERSION", "v_before_dropoff_label_and_alignment_fix");
-      console.log("BACKUP: 스냅샷이 생성되었습니다 (v_before_dropoff_label_and_alignment_fix).");
-    }
+    performBackup();
   }, []);
 
   useEffect(() => {
@@ -61,10 +63,11 @@ const App: React.FC = () => {
   const handleInfoSubmit = (data: Partial<UserData>) => {
     setUserData(prev => ({ ...prev, ...data }));
     setScreen(Screen.SHUTTLE_SELECT);
+    setSearchEntrySource('MYPAGE');
   };
 
   const handleApplySuccess = () => {
-    setUserData(prev => ({ ...prev, isApplied: true }));
+    setUserData(prev => ({ ...prev, isApplied: true, selectedShuttleId: 'shuttle_1' }));
     localStorage.removeItem('shuttle_session_state');
     setScreen(Screen.MAIN_DASHBOARD);
   };
@@ -72,7 +75,7 @@ const App: React.FC = () => {
   const handleLogout = () => {
     localStorage.removeItem('shuttle_user_data');
     localStorage.removeItem('shuttle_session_state');
-    setUserData({ role: null, studentName: '', studentPhone: '', parentPhone: '', isApplied: false });
+    setUserData({ role: null, studentName: '', studentPhone: '', parentPhone: '', isApplied: false, selectedShuttleId: 'shuttle_1' });
     setScreen(Screen.START);
   };
 
@@ -88,20 +91,33 @@ const App: React.FC = () => {
     switch (screen) {
       case Screen.START: return <StartScreen onSelect={handleRoleSelect} />;
       case Screen.INFO_INPUT: return <InfoScreen onNext={handleInfoSubmit} />;
-      case Screen.SHUTTLE_SELECT: return <ShuttleSelectScreen onApply={handleApplySuccess} onBack={() => setScreen(userData.isApplied ? Screen.MAIN_DASHBOARD : Screen.INFO_INPUT)} />;
+      case Screen.SHUTTLE_SELECT: return (
+        <ShuttleSelectScreen 
+          onApply={handleApplySuccess} 
+          onBack={() => setScreen(searchEntrySource === 'DROPDOWN' ? Screen.MAIN_DASHBOARD : Screen.MY_PAGE)}
+        />
+      );
       case Screen.MAIN_DASHBOARD: 
         return <MainDashboard 
           userData={userData} 
+          setUserData={setUserData}
           onGoToMyPage={() => setScreen(Screen.MY_PAGE)} 
           onGoToChat={() => setScreen(Screen.CHAT)}
           onGoToNotices={() => setScreen(Screen.NOTICE_LIST)}
+          onAddRoute={() => {
+            setSearchEntrySource('DROPDOWN');
+            setScreen(Screen.SHUTTLE_SELECT);
+          }}
           onSelectNotice={(id) => {
             setSelectedNoticeId(id);
             setScreen(Screen.NOTICE_DETAIL);
           }}
         />;
       case Screen.CHAT: return <ChatScreen onBack={() => setScreen(Screen.MAIN_DASHBOARD)} />;
-      case Screen.MY_PAGE: return <MyPage userData={userData} setUserData={setUserData} onLogout={handleLogout} onBack={() => setScreen(Screen.MAIN_DASHBOARD)} onSearchShuttle={() => setScreen(Screen.SHUTTLE_SELECT)} />;
+      case Screen.MY_PAGE: return <MyPage userData={userData} setUserData={setUserData} onLogout={handleLogout} onBack={() => setScreen(Screen.MAIN_DASHBOARD)} onSearchShuttle={() => {
+        setSearchEntrySource('MYPAGE');
+        setScreen(Screen.SHUTTLE_SELECT);
+      }} />;
       case Screen.NOTICE_LIST: return <NoticeList {...commonNoticeProps} notices={NOTICES} />;
       case Screen.NOTICE_DETAIL: 
         const notice = NOTICES.find(n => n.id === selectedNoticeId);

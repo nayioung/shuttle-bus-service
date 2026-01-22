@@ -76,7 +76,8 @@ const MyPage: React.FC<MyPageProps> = ({ userData, setUserData, onLogout, onBack
               <InfoRow label="학생 전화번호" value={userData.studentPhone} />
               <InfoRow label="학부모 전화번호" value={userData.parentPhone} />
               <InfoRow label="기사님 연락처" value={SHUTTLE_INFO.driverPhone} />
-              <InfoRow label="차량 번호" value={SHUTTLE_INFO.carNumber} />
+              {/* 7) 차량번호 수정 */}
+              <InfoRow label="차량 번호" value="경기 00가 0000" />
               <InfoRow label="탑승 위치" value="아름마을" />
               <InfoRow label="예상 승차 시간" value={formatHHMMSS(boardingTime)} />
             </>

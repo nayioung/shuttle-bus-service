@@ -23,21 +23,24 @@ export interface UserData {
   studentPhone: string;
   parentPhone: string;
   isApplied: boolean;
+  selectedShuttleId?: string; // 2) 선택된 셔틀 ID 저장
 }
 
 export interface SessionState {
   t0: number | null;
-  lateCount: number; // monthly count
-  absentDates: string[]; // YYYY-MM-DD
+  lateCount: number;
+  absentDates: string[];
   isLateRequested: boolean;
   isAbsentRequested: boolean;
   hasRandomDelay: boolean;
+  calendarMemos: Record<string, string>; // 6) 날짜별 메모 저장 (YYYY-MM-DD: string)
+  calendarViewMode: 'week' | 'month'; // 9) 달력 보기 모드
 }
 
 export interface ShuttleStop {
   id: number;
   name: string;
-  timeOffset: number; // seconds from T0
+  timeOffset: number;
   isBoarding?: boolean;
   isDestination?: boolean;
 }
