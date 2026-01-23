@@ -1,21 +1,21 @@
 
-import React, { useState, useEffect } from 'react';
+import React, { useState } from 'react';
 import { parseDigits, formatPhone } from '../helpers';
 
 interface InputPhoneProps {
   label: string;
   value: string;
   onChange: (formatted: string, isValid: boolean) => void;
+  iosStyle?: boolean; // iOS 테두리 없는 스타일
 }
 
-const InputPhone: React.FC<InputPhoneProps> = ({ label, value, onChange }) => {
+const InputPhone: React.FC<InputPhoneProps> = ({ label, value, onChange, iosStyle = false }) => {
   const [innerValue, setInnerValue] = useState(value || '010-');
   const [error, setError] = useState('');
 
   const handleChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     let input = e.target.value;
     
-    // Always keep "010-"
     if (!input.startsWith('010-')) {
       input = '010-' + parseDigits(input);
     }
@@ -35,6 +35,22 @@ const InputPhone: React.FC<InputPhoneProps> = ({ label, value, onChange }) => {
     
     onChange(formatted, isValid);
   };
+
+  if (iosStyle) {
+    return (
+      <div className="w-full">
+        <label className="block text-[12px] font-bold text-[#007AFF] mb-1 uppercase tracking-wider">{label}</label>
+        <input
+          type="tel"
+          value={innerValue}
+          onChange={handleChange}
+          className="w-full py-1 bg-transparent text-[17px] font-medium border-none focus:outline-none placeholder-gray-300"
+          placeholder="010-XXXX-XXXX"
+        />
+        {error && <p className="text-red-500 text-[10px] mt-1 font-bold">{error}</p>}
+      </div>
+    );
+  }
 
   return (
     <div className="w-full mb-4">

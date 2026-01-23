@@ -25,41 +25,51 @@ const InfoScreen: React.FC<InfoScreenProps> = ({ onNext }) => {
 
   return (
     <div className="flex flex-col min-h-screen p-6 bg-[#F2F2F7] max-w-[420px] mx-auto w-full">
-      <h2 className="text-[28px] font-bold mb-10 tracking-tight">회원 정보 입력</h2>
+      <div className="mt-10 mb-10">
+        <h2 className="text-[30px] font-bold tracking-tight text-black">정보 입력</h2>
+        <p className="text-[15px] text-gray-500 font-medium mt-1">정확한 정보를 입력해 주세요.</p>
+      </div>
       
-      <div className="flex-1 space-y-6">
-        <div className="ios-card p-4">
-          <label className="block text-[13px] font-semibold text-gray-500 mb-2 uppercase tracking-wide">학생 이름</label>
-          <input
-            type="text"
-            value={name}
-            onChange={(e) => setName(e.target.value)}
-            className="w-full p-2 bg-transparent text-[17px] font-medium border-none focus:outline-none"
-            placeholder="이름 입력"
-          />
+      <div className="flex-1 space-y-4">
+        {/* iOS Grouped Style Section */}
+        <div className="bg-white rounded-2xl border border-gray-200 overflow-hidden divide-y divide-gray-100 shadow-none">
+          <div className="p-4">
+            <label className="block text-[12px] font-bold text-[#007AFF] mb-1 uppercase tracking-wider">학생 이름</label>
+            <input
+              type="text"
+              value={name}
+              onChange={(e) => setName(e.target.value)}
+              className="w-full py-1 bg-transparent text-[17px] font-medium border-none focus:outline-none placeholder-gray-300"
+              placeholder="이름을 입력하세요"
+            />
+          </div>
+          <div className="p-4">
+            <InputPhone 
+              label="학생 전화번호" 
+              value={sPhone.value} 
+              onChange={(v, valid) => setSPhone({ value: v, valid })} 
+              iosStyle
+            />
+          </div>
+          <div className="p-4">
+            <InputPhone 
+              label="학부모 전화번호" 
+              value={pPhone.value} 
+              onChange={(v, valid) => setPPhone({ value: v, valid })} 
+              iosStyle
+            />
+          </div>
         </div>
-
-        <div className="ios-card p-4">
-          <InputPhone 
-            label="학생 전화번호" 
-            value={sPhone.value} 
-            onChange={(v, valid) => setSPhone({ value: v, valid })} 
-          />
-        </div>
-
-        <div className="ios-card p-4">
-          <InputPhone 
-            label="학부모 전화번호" 
-            value={pPhone.value} 
-            onChange={(v, valid) => setPPhone({ value: v, valid })} 
-          />
-        </div>
+        
+        <p className="text-[12px] text-gray-400 px-2 leading-tight">
+          입력하신 정보는 셔틀 탑승 확인 및 긴급 연락 시에만 활용되며 안전하게 보관됩니다.
+        </p>
       </div>
 
       <button
         onClick={handleNext}
         disabled={!isFormValid}
-        className={`w-full py-5 font-bold text-[17px] rounded-2xl transition-all ${isFormValid ? 'bg-[#007AFF] text-white shadow-lg active:opacity-80' : 'bg-gray-300 text-white cursor-not-allowed'}`}
+        className={`w-full py-4 font-bold text-[17px] rounded-2xl transition-all ${isFormValid ? 'bg-[#007AFF] text-white active:opacity-80' : 'bg-[#C6C6C8] text-white cursor-not-allowed'}`}
       >
         계속하기
       </button>

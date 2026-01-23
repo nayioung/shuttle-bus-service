@@ -1,8 +1,8 @@
 
 import React, { useState, useEffect, useRef } from 'react';
-import { UserRole, UserData, SessionState } from '../types';
-import { SHUTTLE_STOPS, SHUTTLES, NOTICES, NON_OPERATION_DATES } from '../constants';
-import { formatHHMMSS } from '../helpers';
+import { UserRole, UserData, SessionState, Notice } from '../types';
+import { SHUTTLE_STOPS, NON_OPERATION_DATES } from '../constants';
+import { formatHHMMSS, markEventDate } from '../helpers';
 import Modal from '../components/Modal';
 import Toggle from '../components/Toggle';
 import Timeline from './Timeline';
@@ -11,6 +11,7 @@ import MiniCalendar from './MiniCalendar';
 interface MainDashboardProps {
   userData: UserData;
   setUserData: React.Dispatch<React.SetStateAction<UserData>>;
+  notices: Notice[];
   onGoToMyPage: () => void;
   onGoToChat: () => void;
   onGoToNotices: () => void;
@@ -19,7 +20,7 @@ interface MainDashboardProps {
 }
 
 const MainDashboard: React.FC<MainDashboardProps> = ({ 
-  userData, setUserData, onGoToMyPage, onGoToChat, onGoToNotices, onAddRoute, onSelectNotice 
+  userData, setUserData, notices, onGoToMyPage, onGoToChat, onGoToNotices, onAddRoute, onSelectNotice 
 }) => {
   const [session, setSession] = useState<SessionState>(() => {
     const saved = localStorage.getItem('shuttle_session_state');
@@ -43,18 +44,73 @@ const MainDashboard: React.FC<MainDashboardProps> = ({
   });
 
   const [now, setNow] = useState(Date.now());
+  const todayStr = new Date().toISOString().split('T')[0];
+  
+  // 팝업 중복 노출 방지 상태
+  const [hasShownBoarding, setHasShownBoarding] = useState(false);
+  const [hasShownAlighting, setHasShownAlighting] = useState(false);
+
   const [isAlertOn, setIsAlertOn] = useState(() => !session.isAbsentRequested);
   const [activeModal, setActiveModal] = useState<{ title: string; desc: string; onConfirm?: () => void; hideCancel?: boolean } | null>(null);
   const [isDropdownOpen, setIsDropdownOpen] = useState(false);
-  
-  const shownAlerts = useRef<Set<string>>(new Set());
+  const [showAttendanceInfo, setShowAttendanceInfo] = useState(false);
+
+  // [유지] 사용자 전용 지각 알림 (기사님 기준 문구)
+  useEffect(() => {
+    const shownKey = `user_delay_shown_${todayStr}`;
+    const alreadyShown = localStorage.getItem(shownKey);
+
+    if (!alreadyShown && userData.role !== UserRole.DRIVER) {
+      if (Math.random() < 0.3) {
+        const timer = setTimeout(() => {
+          setActiveModal({
+            title: "지각 안내",
+            desc: "기사님이 지각할 수 있습니다.",
+            hideCancel: true,
+            onConfirm: () => setActiveModal(null)
+          });
+          localStorage.setItem(shownKey, 'true');
+        }, 5000);
+        return () => clearTimeout(timer);
+      } else {
+        localStorage.setItem(shownKey, 'none');
+      }
+    }
+  }, [todayStr, userData.role]);
+
+  // [유지] 학부모용 승하차 실시간 팝업 로직
+  useEffect(() => {
+    if (userData.role !== UserRole.PARENT || !isAlertOn) return;
+
+    const t0 = session.t0 || Date.now();
+    const delayMs = (session.isLateRequested || session.hasRandomDelay) ? 20000 : 0;
+    
+    const boardingTrigger = t0 + (30 * 1000) + delayMs;
+    const alightingTrigger = t0 + (150 * 1000) + delayMs;
+
+    if (!hasShownBoarding && now >= boardingTrigger) {
+      setHasShownBoarding(true);
+      setActiveModal({
+        title: "승차 알림",
+        desc: `${userData.studentName}이 승차하였습니다.`,
+        hideCancel: true,
+        onConfirm: () => setActiveModal(null)
+      });
+    }
+
+    if (!hasShownAlighting && now >= alightingTrigger) {
+      setHasShownAlighting(true);
+      setActiveModal({
+        title: "하차 알림",
+        desc: `${userData.studentName}이 하차하였습니다.`,
+        hideCancel: true,
+        onConfirm: () => setActiveModal(null)
+      });
+    }
+  }, [now, userData.role, userData.studentName, isAlertOn, session.t0, session.isLateRequested, session.hasRandomDelay]);
 
   useEffect(() => {
-    if (session.isAbsentRequested) {
-      setIsAlertOn(false);
-    } else {
-      setIsAlertOn(true);
-    }
+    setIsAlertOn(!session.isAbsentRequested);
   }, [session.isAbsentRequested]);
 
   useEffect(() => {
@@ -66,52 +122,51 @@ const MainDashboard: React.FC<MainDashboardProps> = ({
     return () => clearInterval(timer);
   }, []);
 
+  /**
+   * [핵심 복구 로직] 실제 승차 시간 계산 (지연 반영)
+   * T0 + 기본 30초 + (지각 신청 or 기사 지연 시 20초)
+   */
   const t0 = session.t0 || Date.now();
-  const elapsed = Math.floor((now - t0) / 1000);
-  const delaySec = session.isLateRequested ? 20 : 0;
-  const boardingTime = new Date(t0 + (30) * 1000); 
-  const arrivalTime = new Date(t0 + (150 + delaySec) * 1000); 
+  const delaySec = (session.isLateRequested || session.hasRandomDelay) ? 20 : 0;
+  const boardingTime = new Date(t0 + (30 + delaySec) * 1000); 
   const isAfterBoarding = now >= boardingTime.getTime();
 
-  useEffect(() => {
-    if (!isAlertOn || session.isAbsentRequested) return;
-    if (userData.role === UserRole.STUDENT && elapsed === (150 + delaySec - 30) && !shownAlerts.current.has('st_arrival')) {
-      setActiveModal({ title: '알림', desc: '하차 1분 전입니다', hideCancel: true });
-      shownAlerts.current.add('st_arrival');
-    }
-    if (userData.role === UserRole.PARENT) {
-      if (elapsed === 30 && !shownAlerts.current.has('pa_board')) {
-        setActiveModal({ title: '승차 알림', desc: `${userData.studentName}이(가) 승차하였습니다.`, hideCancel: true });
-        shownAlerts.current.add('pa_board');
-      }
-      if (elapsed === (150 + delaySec) && !shownAlerts.current.has('pa_alight')) {
-        setActiveModal({ title: '하차 알림', desc: `${userData.studentName}이(가) 하차하였습니다.`, hideCancel: true });
-        shownAlerts.current.add('pa_alight');
-      }
-    }
-  }, [elapsed, isAlertOn, session.isAbsentRequested, userData, delaySec]);
-
+  /**
+   * [수정] 미탑승 신청/취소 핸들러
+   * 승차 시간이 지난 경우 신청 및 취소 행위를 모두 차단함
+   */
   const handleAbsentClick = () => {
     if (isAfterBoarding) {
-      setActiveModal({ title: '알림', desc: '승차 시간이 지나 신청/취소할 수 없습니다.', hideCancel: true });
+      setActiveModal({ 
+        title: '알림', 
+        desc: '승차 시간이 지나 신청/취소할 수 없습니다.', // 요청하신 정확한 문구 적용
+        hideCancel: true 
+      });
       return;
     }
+    
     if (session.isLateRequested) {
       setActiveModal({ title: '알림', desc: '이미 다른 항목이 선택되어 있어 신청할 수 없습니다.', hideCancel: true });
       return;
     }
 
-    const todayStr = new Date().toISOString().split('T')[0];
     if (session.isAbsentRequested) {
-      setSession(s => ({ 
-        ...s, 
-        isAbsentRequested: false, 
-        absentDates: s.absentDates.filter(d => d !== todayStr)
-      }));
+      setActiveModal({ 
+        title: "취소 확인", 
+        desc: "미탑승을 취소하시겠습니까?", 
+        onConfirm: () => {
+          setSession(s => ({ 
+            ...s, 
+            isAbsentRequested: false, 
+            absentDates: s.absentDates.filter(d => d !== todayStr)
+          }));
+          setActiveModal(null);
+        }
+      });
     } else {
       setActiveModal({ 
         title: "신청 확인", 
-        desc: "당일 미탑승 하시겠습니까?", 
+        desc: "미탑승을 신청하시겠습니까?", 
         onConfirm: () => {
           setSession(s => ({ 
             ...s, 
@@ -124,18 +179,34 @@ const MainDashboard: React.FC<MainDashboardProps> = ({
     }
   };
 
+  /**
+   * [수정] 지각 신청/취소 핸들러
+   * 승차 시간이 지난 경우 신청 및 취소 행위를 모두 차단함
+   */
   const handleLateClick = () => {
     if (isAfterBoarding) {
-      setActiveModal({ title: '알림', desc: '승차 시간이 지나 신청/취소할 수 없습니다.', hideCancel: true });
+      setActiveModal({ 
+        title: '알림', 
+        desc: '승차 시간이 지나 신청/취소할 수 없습니다.', // 요청하신 정확한 문구 적용
+        hideCancel: true 
+      });
       return;
     }
+
     if (session.isAbsentRequested) {
       setActiveModal({ title: '알림', desc: '이미 다른 항목이 선택되어 있어 신청할 수 없습니다.', hideCancel: true });
       return;
     }
 
     if (session.isLateRequested) {
-      setSession(s => ({ ...s, isLateRequested: false }));
+       setActiveModal({ 
+        title: "취소 확인", 
+        desc: "지각 신청을 취소하시겠습니까?", 
+        onConfirm: () => {
+          setSession(s => ({ ...s, isLateRequested: false }));
+          setActiveModal(null);
+        }
+      });
     } else {
       setActiveModal({ 
         title: "신청 확인", 
@@ -148,22 +219,14 @@ const MainDashboard: React.FC<MainDashboardProps> = ({
     }
   };
 
-  const timeFontStyle = {
-    fontFamily: '-apple-system, BlinkMacSystemFont, "Apple SD Gothic Neo", "Noto Sans KR", system-ui, sans-serif'
-  };
-
   return (
     <div className="flex flex-col min-h-screen bg-[#F2F2F7] max-w-[420px] mx-auto w-full overflow-x-hidden pb-10">
       <div className="flex items-center justify-between px-5 py-4 sticky top-0 bg-[#F2F2F7]/80 backdrop-blur-md z-[60]">
         <div className="relative">
-          <button 
-            onClick={() => setIsDropdownOpen(!isDropdownOpen)}
-            className="flex items-center gap-2 bg-white border border-gray-200 rounded-full px-4 py-1.5 text-[14px] font-bold text-[#007AFF] active:bg-gray-50 transition-colors"
-          >
+          <button onClick={() => setIsDropdownOpen(!isDropdownOpen)} className="flex items-center gap-2 bg-white border border-gray-200 rounded-full px-4 py-1.5 text-[14px] font-bold text-[#007AFF] active:bg-gray-50 transition-colors">
             <span>분당 1코스</span>
             <span className={`text-[10px] transition-transform duration-200 ${isDropdownOpen ? 'rotate-180' : ''}`}>▼</span>
           </button>
-          
           {isDropdownOpen && (
             <>
               <div className="fixed inset-0 z-10" onClick={() => setIsDropdownOpen(false)}></div>
@@ -185,77 +248,73 @@ const MainDashboard: React.FC<MainDashboardProps> = ({
       </div>
 
       <div className="px-5 space-y-4">
-        {/* 예상 시간 카드 */}
-        <div className="ios-card flex p-4 divide-x divide-gray-100 bg-white shadow-sm border-none">
+        <div className="ios-card flex p-4 divide-x divide-gray-100 bg-white shadow-none border-gray-200">
           <div className="flex-1 flex flex-col items-center">
             <span className="text-[11px] font-bold text-gray-400 uppercase tracking-widest mb-1 text-center">예상 승차</span>
-            <span style={timeFontStyle} className={`text-[20px] font-black tabular-nums transition-colors duration-300 text-black`}>
-              {formatHHMMSS(boardingTime)}
-            </span>
+            <span className="text-[20px] font-black tabular-nums text-black">{formatHHMMSS(boardingTime)}</span>
           </div>
           <div className="flex-1 flex flex-col items-center">
             <span className="text-[11px] font-bold text-gray-400 uppercase tracking-widest mb-1 text-center">예상 하차</span>
-            <span style={timeFontStyle} className={`text-[20px] font-black tabular-nums transition-colors duration-300 text-black`}>
-              {formatHHMMSS(arrivalTime)}
-            </span>
+            <span className="text-[20px] font-black tabular-nums text-black">{formatHHMMSS(new Date(t0 + (150 + delaySec) * 1000))}</span>
           </div>
         </div>
 
-        {/* 공지사항 카드 */}
-        <div className="ios-card p-4 bg-white active:bg-gray-50 transition-colors cursor-pointer border-none shadow-sm" onClick={onGoToNotices}>
+        <div className="ios-card p-4 bg-white active:bg-gray-50 transition-colors cursor-pointer border-gray-200" onClick={onGoToNotices}>
           <div className="flex justify-between items-center mb-1">
             <h4 className="text-[11px] font-black text-gray-300 uppercase tracking-widest">Driver Notice</h4>
             <span className="text-[12px] text-[#007AFF] font-bold">전체보기</span>
           </div>
-          <p className="text-[16px] font-bold text-black truncate">{NOTICES[0].title}</p>
+          <p className="text-[16px] font-bold text-black truncate">{notices[0]?.title || '공지사항이 없습니다.'}</p>
         </div>
 
-        {/* 노선 및 설정 그리드 영역 */}
         <div className="flex gap-4 items-stretch">
-          {/* 노선 시각화 UI (Timeline 내부에 혼잡도 안내 포함) */}
-          <div className="ios-card p-3 w-[135px] flex flex-col items-center bg-white border-none shadow-sm relative overflow-hidden">
+          <div className="ios-card p-3 w-[135px] flex flex-col items-center bg-white border-gray-200 relative overflow-hidden">
             <Timeline t0={t0} isLate={session.isLateRequested} isAbsent={session.isAbsentRequested} />
           </div>
           
           <div className="flex-1 space-y-4">
-            <div className="ios-card p-4 bg-white border-none shadow-sm">
+            <div className="ios-card p-4 bg-white border-gray-200">
               <Toggle label={userData.role === UserRole.STUDENT ? "하차 알림" : "승하차 알림"} isOn={isAlertOn} onToggle={() => setIsAlertOn(!isAlertOn)} />
             </div>
 
-            <div className="ios-card p-4 space-y-4 bg-white border-none shadow-sm">
-              <h4 className="text-[11px] font-black text-gray-300 uppercase tracking-widest text-center">Attendance</h4>
+            <div className="ios-card p-4 space-y-4 bg-white border-gray-200 relative">
+              <div className="flex justify-center items-center relative">
+                <h4 className="text-[11px] font-black text-gray-300 uppercase tracking-widest">Attendance</h4>
+                <button 
+                  onClick={() => setShowAttendanceInfo(!showAttendanceInfo)}
+                  className="absolute right-0 w-5 h-5 flex items-center justify-center text-[10px] font-black text-[#007AFF] bg-[#007AFF]/10 rounded-full active:scale-90 transition-all"
+                >
+                  ⓘ
+                </button>
+              </div>
+              
+              {showAttendanceInfo && (
+                <div className="bg-[#F2F2F7] p-2 rounded-lg text-[8px] font-bold text-gray-600 animate-slide-down border border-gray-100 leading-tight">
+                  승차 시간 이후에는 설정이 불가능합니다.
+                </div>
+              )}
+
               <div className="space-y-2">
-                {/* [수정] 승차 시간 이후 버튼 비활성화 시각화 강화 */}
+                {/* 
+                   isAfterBoarding 시 버튼 시각적 비활성화 및 클릭 로직 적용
+                   disabled 속성을 부여하되 클릭 시 모달이 뜨도록 handle 함수 호출 유지
+                */}
                 <button 
                   onClick={handleAbsentClick} 
-                  disabled={isAfterBoarding}
-                  className={`w-full py-3.5 text-[15px] font-bold rounded-xl border transition-all 
-                    ${isAfterBoarding 
-                      ? 'bg-[#E5E5EA] text-[#8E8E93] border-transparent cursor-not-allowed opacity-70' 
-                      : session.isAbsentRequested 
-                        ? 'bg-[#FF3B30] text-white border-transparent' 
-                        : 'bg-white text-black border-gray-100 active:bg-gray-50'
-                    }`}
+                  className={`w-full py-3.5 text-[15px] font-bold rounded-xl border transition-all ${isAfterBoarding ? 'bg-[#E5E5EA] text-[#8E8E93] border-transparent cursor-not-allowed opacity-70' : session.isAbsentRequested ? 'bg-[#FF3B30] text-white border-transparent' : 'bg-white text-black border-gray-200 active:bg-gray-50'}`}
                 >
                   당일 미탑승 {session.isAbsentRequested && '✓'}
                 </button>
                 <button 
                   onClick={handleLateClick} 
-                  disabled={isAfterBoarding}
-                  className={`w-full py-3.5 text-[15px] font-bold rounded-xl border transition-all 
-                    ${isAfterBoarding 
-                      ? 'bg-[#E5E5EA] text-[#8E8E93] border-transparent cursor-not-allowed opacity-70' 
-                      : session.isLateRequested 
-                        ? 'bg-[#007AFF] text-white border-transparent' 
-                        : 'bg-white text-black border-gray-100 active:bg-gray-50'
-                    }`}
+                  className={`w-full py-3.5 text-[15px] font-bold rounded-xl border transition-all ${isAfterBoarding ? 'bg-[#E5E5EA] text-[#8E8E93] border-transparent cursor-not-allowed opacity-70' : session.isLateRequested ? 'bg-[#007AFF] text-white border-transparent' : 'bg-white text-black border-gray-200 active:bg-gray-50'}`}
                 >
                   지각 신청 {session.isLateRequested && '✓'}
                 </button>
               </div>
             </div>
 
-            <div className="ios-card p-4 bg-white border-none shadow-sm">
+            <div className="ios-card p-4 bg-white border-gray-200">
               <div className="flex justify-between items-center mb-4">
                 <div className="text-[14px]">
                    <p className="font-black text-[17px] text-black tracking-tight">김기사 기사님</p>
@@ -268,39 +327,22 @@ const MainDashboard: React.FC<MainDashboardProps> = ({
           </div>
         </div>
 
-        {/* 달력 영역 */}
-        <div className="ios-card p-5 bg-white border-none shadow-sm">
+        <div className="ios-card p-5 bg-white border-gray-200">
           <MiniCalendar 
             absentDates={session.absentDates} 
             calendarMemos={session.calendarMemos}
             viewMode={session.calendarViewMode}
             onDateSelect={(date) => {
               const alreadyAbsent = session.absentDates.includes(date);
-              setSession(s => ({ 
-                ...s, 
-                absentDates: alreadyAbsent 
-                  ? s.absentDates.filter(d => d !== date) 
-                  : [...s.absentDates, date] 
-              }));
+              setSession(s => ({ ...s, absentDates: alreadyAbsent ? s.absentDates.filter(d => d !== date) : [...s.absentDates, date] }));
             }}
-            onUpdateMemo={(date, memo) => {
-              setSession(s => ({ ...s, calendarMemos: { ...s.calendarMemos, [date]: memo } }));
-            }}
-            onToggleView={() => {
-              setSession(s => ({ ...s, calendarViewMode: s.calendarViewMode === 'week' ? 'month' : 'week' }));
-            }}
+            onUpdateMemo={(date, memo) => { setSession(s => ({ ...s, calendarMemos: { ...s.calendarMemos, [date]: memo } })); }}
+            onToggleView={() => { setSession(s => ({ ...s, calendarViewMode: s.calendarViewMode === 'week' ? 'month' : 'week' })); }}
           />
         </div>
       </div>
 
-      <Modal 
-        isOpen={!!activeModal}
-        title={activeModal?.title || ''}
-        description={activeModal?.desc || ''}
-        hideCancel={activeModal?.hideCancel}
-        onConfirm={activeModal?.onConfirm || (() => setActiveModal(null))}
-        onCancel={() => setActiveModal(null)}
-      />
+      <Modal isOpen={!!activeModal} title={activeModal?.title || ''} description={activeModal?.desc || ''} hideCancel={activeModal?.hideCancel} onConfirm={activeModal?.onConfirm || (() => setActiveModal(null))} onCancel={() => setActiveModal(null)} />
     </div>
   );
 };

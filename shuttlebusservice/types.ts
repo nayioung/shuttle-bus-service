@@ -12,7 +12,8 @@ export enum Screen {
   MAIN_DASHBOARD = 'MAIN_DASHBOARD',
   CHAT = 'CHAT',
   MY_PAGE = 'MY_PAGE',
-  DRIVER_PREPARE = 'DRIVER_PREPARE',
+  DRIVER_HOME = 'DRIVER_HOME',
+  DRIVER_ROUTE_DETAIL = 'DRIVER_ROUTE_DETAIL',
   NOTICE_LIST = 'NOTICE_LIST',
   NOTICE_DETAIL = 'NOTICE_DETAIL'
 }
@@ -23,7 +24,7 @@ export interface UserData {
   studentPhone: string;
   parentPhone: string;
   isApplied: boolean;
-  selectedShuttleId?: string; // 2) 선택된 셔틀 ID 저장
+  selectedShuttleId?: string;
 }
 
 export interface SessionState {
@@ -33,8 +34,8 @@ export interface SessionState {
   isLateRequested: boolean;
   isAbsentRequested: boolean;
   hasRandomDelay: boolean;
-  calendarMemos: Record<string, string>; // 6) 날짜별 메모 저장 (YYYY-MM-DD: string)
-  calendarViewMode: 'week' | 'month'; // 9) 달력 보기 모드
+  calendarMemos: Record<string, string>;
+  calendarViewMode: 'week' | 'month';
 }
 
 export interface ShuttleStop {
